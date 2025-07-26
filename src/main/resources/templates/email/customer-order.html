@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Order Confirmation</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f9f9f9; padding: 20px;">
+<div style="max-width: 600px; margin: auto; background-color: #fff; padding: 20px; border-radius: 10px;">
+    <h2 style="color: #4CAF50;">✅ Order Confirmation</h2>
+    <p>Dear Customer,</p>
+    <p>Your order has been successfully processed. Here are your details:</p>
+
+    <table style="width: 100%; font-size: 16px;">
+        <tr>
+            <td><strong>Order ID:</strong></td>
+            <td th:text="${orderId}">1</td>
+        </tr>
+        <tr>
+            <td><strong>Total Price:</strong></td>
+            <td th:text="${price} + ' EGP'">200 EGP</td>
+        </tr>
+        <tr>
+            <td><strong>Transaction ID:</strong></td>
+            <td th:text="${transactionId}">456789</td>
+        </tr>
+        <tr th:if="${couponCode != null}">
+            <td><strong>Coupon Code:</strong></td>
+            <td th:text="${couponCode}">SUMMER2025</td>
+        </tr>
+    </table>
+
+    <p>Thank you for your purchase!</p>
+
+    <div style="text-align: center; margin-top: 20px;">
+        <a href="http://localhost:4200"
+           style="display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px;
+           text-decoration: none; border-radius: 5px;">Visit Our Store</a>
+    </div>
+</div>
+</body>
+</html>
