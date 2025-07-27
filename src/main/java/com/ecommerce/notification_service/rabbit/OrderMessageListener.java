@@ -12,8 +12,8 @@ public class OrderMessageListener {
     private final NotificationService notificationService;
 
     @RabbitListener(queues = RabbitMQConfig.QUEUE)
-    public String receiveOrderMessage(OrderNotificationMessage message) {
-        notificationService.sendMail(message);
+    public String receiveOrderMessage(OrderEvent event) {
+        notificationService.handleOrderEvent(event);
         return "Email sending process initiated. You will receive an email shortly.";
     }
 }

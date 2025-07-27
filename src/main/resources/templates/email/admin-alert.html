@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Alert</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #fff; padding: 20px;">
+<div style="max-width: 600px; margin: auto; background-color: #ffe0e0; padding: 20px; border-radius: 10px;">
+  <h2 style="color: #d32f2f;">🚨 Email Delivery Failed</h2>
+  <p>An error occurred while trying to send an email to a customer.</p>
+
+  <table style="width: 100%; font-size: 16px;">
+    <tr>
+      <td><strong>Order ID:</strong></td>
+      <td th:text="${orderId}">-</td>
+    </tr>
+    <tr>
+      <td><strong>Customer Email:</strong></td>
+      <td th:text="${customerEmail}">-</td>
+    </tr>
+    <tr>
+      <td><strong>Error Message:</strong></td>
+      <td th:text="${errorMessage}">-</td>
+    </tr>
+  </table>
+
+  <p>Please investigate this issue as soon as possible.</p>
+</div>
+</body>
+</html>

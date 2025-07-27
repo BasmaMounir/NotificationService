@@ -1,96 +1,116 @@
 package com.ecommerce.notification_service.service;
 
-import com.ecommerce.notification_service.rabbit.OrderNotificationMessage;
-import com.ecommerce.notification_service.model.FailedNotification;
-import com.ecommerce.notification_service.repository.FailedNotificationRepository;
-import jakarta.mail.internet.MimeMessage;
-import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.stereotype.Service;
-import org.springframework.scheduling.annotation.Async;
+import com.ecommerce.notification_service.model.Notification;
+import com.ecommerce.notification_service.model.Status;
+import com.ecommerce.notification_service.rabbit.OrderEvent;
+import com.ecommerce.notification_service.repository.NotificationRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.thymeleaf.TemplateEngine;
-import org.thymeleaf.context.Context;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 
-import java.util.Optional;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class NotificationService {
 
-    private final JavaMailSender mailSender;
-    private final FailedNotificationRepository failedNotificationRepository;
+    private final NotificationRepository repository;
+    private final EmailSenderService emailSender;
+    private final EmailTemplateBuilder templateBuilder;
     private final ObjectMapper objectMapper;
-    private final TemplateEngine templateEngine;
 
+    private static final Pattern EMAIL_PATTERN = Pattern.compile(
+            "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,6}$"
+    );
 
-    @Value("${spring.mail.username}")
-    private String emailSender;
-
-    @Async
-    public void sendMail(OrderNotificationMessage event) {
+    @Transactional
+    public void handleOrderEvent(OrderEvent orderEvent) {
         try {
-            if (event.getCustomerEmail() == null || event.getCustomerEmail().isBlank()) {
-                System.err.println("Email is missing for order: " + event.getOrderId());
-                saveFailedNotification(event, "Missing customer email.");
-                return;
+            log.info("Handling order event for orderId={}", orderEvent.getOrderId());
+
+            if (!isValidEmail(orderEvent.getCustomerEmail())) {
+                log.warn("Invalid email format: {}", orderEvent.getCustomerEmail());
             }
 
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            String eventJson = objectMapper.writeValueAsString(orderEvent);
 
-            helper.setFrom(emailSender,"Shoppia Store");
-            helper.setTo(event.getCustomerEmail());
-            helper.setSubject("Order Confirmation - Order ID: " + event.getOrderId());
+            Notification event = Notification.builder()
+                    .orderId(orderEvent.getOrderId())
+                    .customerEmail(orderEvent.getCustomerEmail())
+                    .eventJson(eventJson)
+                    .retryCount(0)
+                    .sentSuccessfully(false)
+                    .status(Status.PENDING)
+                    .build();
 
-            Context context = new Context();
-            context.setVariable("orderId", event.getOrderId());
-            context.setVariable("price", event.getPrice());
-            context.setVariable("transactionId", event.getTransactionId());
-            context.setVariable("couponCode", event.getCouponCode());
+            repository.save(event);
+            log.info("Notification saved to DB for orderId={}", orderEvent.getOrderId());
 
-            String htmlContent = templateEngine.process("email/customer-order", context);
+            sendEmailToCustomer(event);
 
-            helper.setText(htmlContent, true);
-            mailSender.send(message);
-
-            System.out.println("Email sent successfully for order: " + event.getOrderId());
-
-        } catch (Exception e) {
-            System.err.println("Failed to send email for order: " + event.getOrderId() + " - " + e.getMessage());
-            saveFailedNotification(event, e.getMessage());
+        } catch (Exception ex) {
+            log.error("Error while handling order event", ex);
         }
     }
 
-
-    public void saveFailedNotification(OrderNotificationMessage event, String errorMessage) {
+    public void sendEmailToCustomer(Notification event) {
         try {
-            Optional<FailedNotification> existing = failedNotificationRepository.findByOrderIdAndSentSuccessfullyFalse(String.valueOf(event.getOrderId()));
+            log.info("Sending email to customer: {}", event.getCustomerEmail());
 
-            if (existing.isPresent()) {
-                FailedNotification failedNotification = existing.get();
-                failedNotification.setRetryCount(failedNotification.getRetryCount() + 1);
-                failedNotification.setErrorMessage(errorMessage);
-                failedNotificationRepository.save(failedNotification);
-            } else {
-                String eventJson = objectMapper.writeValueAsString(event);
+            OrderEvent orderEvent = objectMapper.readValue(event.getEventJson(), OrderEvent.class);
+            String htmlContent = templateBuilder.buildOrderConfirmationEmail(orderEvent);
 
-                FailedNotification failedNotification = new FailedNotification();
-                failedNotification.setCustomerEmail(event.getCustomerEmail());
-                failedNotification.setOrderId(String.valueOf(event.getOrderId()));
-                failedNotification.setEventJson(eventJson);
-                failedNotification.setRetryCount(1);
-                failedNotification.setErrorMessage(errorMessage);
-                failedNotification.setSentSuccessfully(false);
+            emailSender.sendHtmlEmail(
+                    event.getCustomerEmail(),
+                    "✅ Order Confirmation",
+                    htmlContent
+            );
 
-                failedNotificationRepository.save(failedNotification);
-            }
+            event.setSentSuccessfully(true);
+            event.setStatus(Status.SUCCESS);
+            log.info("Email sent successfully to {}", event.getCustomerEmail());
+
+        } catch (Exception ex) {
+            log.error("Failed to send email to {}", event.getCustomerEmail(), ex);
+
+            event.setRetryCount(event.getRetryCount() + 1);
+            event.setErrorMessage(ex.getMessage());
+            event.setStatus(Status.FAILED);
+        }
+
+        repository.save(event);
+    }
+
+    public void notifyAdmin(Notification event) {
+        try {
+            log.info("Notifying admin about failed notification for orderId={}", event.getOrderId());
+
+            Map<String, Object> model = Map.of(
+                    "orderId", event.getOrderId(),
+                    "customerEmail", event.getCustomerEmail(),
+                    "errorMessage", event.getErrorMessage()
+            );
+
+            String htmlContent = templateBuilder.buildAdminAlertEmail(model);
+
+            emailSender.sendHtmlEmail(
+                    "iotsec10@gmail.com",
+                    "❌ Failed Email Notification",
+                    htmlContent
+            );
+
+            log.info("Admin notified successfully.");
 
         } catch (Exception e) {
-            System.err.println("Error saving failed notification for order " + event.getOrderId() + ": " + e.getMessage());
+            log.error("Failed to notify admin", e);
         }
     }
 
+    private boolean isValidEmail(String email) {
+        return EMAIL_PATTERN.matcher(email).matches();
+    }
 }
