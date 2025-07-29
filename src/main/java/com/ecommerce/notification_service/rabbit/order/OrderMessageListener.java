@@ -1,5 +1,6 @@
-package com.ecommerce.notification_service.rabbit;
+package com.ecommerce.notification_service.rabbit.order;
 
+import com.ecommerce.notification_service.rabbit.RabbitMQConfig;
 import com.ecommerce.notification_service.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -11,9 +12,9 @@ public class OrderMessageListener {
 
     private final NotificationService notificationService;
 
-    @RabbitListener(queues = RabbitMQConfig.QUEUE)
-    public String receiveOrderMessage(OrderEvent event) {
+    @RabbitListener(queues = RabbitMQConfig.ORDER_QUEUE)
+    public void receiveOrderMessage(OrderEvent event) {
         notificationService.handleOrderEvent(event);
-        return "Email sending process initiated. You will receive an email shortly.";
     }
 }
+

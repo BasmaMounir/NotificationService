@@ -1,4 +1,4 @@
-package com.ecommerce.notification_service.rabbit;
+package com.ecommerce.notification_service.rabbit.order;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;

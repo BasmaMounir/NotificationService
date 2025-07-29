@@ -2,8 +2,9 @@ package com.ecommerce.notification_service.service;
 
 import com.ecommerce.notification_service.model.Notification;
 import com.ecommerce.notification_service.model.Status;
-import com.ecommerce.notification_service.rabbit.OrderEvent;
+import com.ecommerce.notification_service.rabbit.order.OrderEvent;
 import com.ecommerce.notification_service.repository.NotificationRepository;
+import com.ecommerce.notification_service.rabbit.user.UserEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -113,4 +114,21 @@ public class NotificationService {
     private boolean isValidEmail(String email) {
         return EMAIL_PATTERN.matcher(email).matches();
     }
+
+    public String sendCode(UserEvent event) {
+        try {
+            String htmlContent = templateBuilder.buildPasswordConfirmationCode(event);
+            emailSender.sendHtmlEmail(
+                    event.getCustomerEmail(),
+                    "Password Confirmation",
+                    htmlContent
+            );
+            return "Email sent successfully to " + event.getCustomerEmail();
+        } catch (Exception ex) {
+            log.error("Failed to send email to {}", event.getCustomerEmail(), ex);
+            return "Failed to send email. Please try again later.";
+        }
+    }
+
+
 }
